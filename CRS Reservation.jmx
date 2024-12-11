@@ -2,16 +2,180 @@
 <jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
   <hashTree>
     <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="BSG Load Testing">
+      <boolProp name="TestPlan.serialize_threadgroups">true</boolProp>
+      <boolProp name="TestPlan.tearDown_on_shutdown">true</boolProp>
       <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables">
-        <collectionProp name="Arguments.arguments"/>
+        <collectionProp name="Arguments.arguments">
+          <elementProp name="environment" elementType="Argument">
+            <stringProp name="Argument.name">environment</stringProp>
+            <stringProp name="Argument.value"></stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+          <elementProp name="threadCount" elementType="Argument">
+            <stringProp name="Argument.name">threadCount</stringProp>
+            <stringProp name="Argument.value">700</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+          <elementProp name="jmeterResultsDir" elementType="Argument">
+            <stringProp name="Argument.name">jmeterResultsDir</stringProp>
+            <stringProp name="Argument.value">jmeterResults</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+        </collectionProp>
       </elementProp>
-      <boolProp name="TestPlan.functional_mode">false</boolProp>
-      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+      <stringProp name="TestPlan.user_define_classpath">/Users,/opt/homebrew/Cellar/jmeter/5.6.3/libexec/lib</stringProp>
     </TestPlan>
     <hashTree>
+      <SetupThreadGroup guiclass="SetupThreadGroupGui" testclass="SetupThreadGroup" testname="setUp Thread Group">
+        <intProp name="ThreadGroup.num_threads">1</intProp>
+        <intProp name="ThreadGroup.ramp_time">1</intProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+        <stringProp name="ThreadGroup.on_sample_error">stoptest</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller">
+          <stringProp name="LoopController.loops">1</stringProp>
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+        </elementProp>
+      </SetupThreadGroup>
+      <hashTree>
+        <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Load Test Run Setup">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="script">import java.text.SimpleDateFormat
+import java.util.Calendar
+
+props.put(&quot;threadCount&quot;, &quot;100&quot;)
+
+// Fetch the &apos;threadCount&apos; and &apos;environment&apos; properties passed via command line (-J options)
+String threadCountStr = vars.get(&quot;threadCount&quot;) ?: props.get(&quot;threadCount&quot;) ?:  &quot;&quot; // Try bash param, then UDV, else empty
+String environment = vars.get(&quot;environment&quot;) ?: props.get(&quot;environment&quot;) ?:  &quot;&quot; // Try bash param, then UDV, else empty
+
+// Print debug information
+println(&quot;threadCountStr: &quot; + props.get(&quot;threadCount&quot;) + &quot; &quot;+ vars.get(&quot;threadCount&quot;))
+
+// Check if threadCount is provided and is a valid integer
+int threadCount = -1 // Default value for threadCount if not valid
+
+if (!threadCountStr.isEmpty()) {
+    try {
+        threadCount = Integer.parseInt(threadCountStr)
+        if (threadCount &lt;= 0) {
+            throw new NumberFormatException()  // Ensure positive number
+        }
+    } catch (NumberFormatException e) {
+        println(&quot;Error: Invalid threadCount value. It should be a positive integer. Exiting.&quot;)
+        System.exit(1)  // Exit with error code 1 if the value is invalid
+    }
+} else {
+    println(&quot;Error: threadCount is not set! Exiting.&quot;)
+    System.exit(1)  // Exit with error code 1 if threadCount is not provided
+}
+
+// Check if environment is still empty, set to an empty string
+if (environment.isEmpty()) {
+    environment = &quot;&quot;  // Set environment to empty string if not provided
+}
+
+// Log the values for debugging (optional)
+println(&quot;Thread Count: &quot; + threadCount)
+println(&quot;Environment: &quot; + environment)
+
+// Set the threadCount and environment as JMeter properties (accessible globally)
+props.put(&quot;threadCount&quot;, threadCount)
+props.put(&quot;environment&quot;, environment)
+
+// You can use the environment to set different values based on the environment
+String serviceName
+switch (environment) {
+    case &quot;uat&quot;:
+        serviceName = &quot;bff.black-sg.com&quot;
+        break
+    case &quot;prod&quot;:
+        //serviceName = &quot;bff.blusg.com&quot; //Disabled to avoid any Accicdental run in Prod
+        break
+    default:
+        serviceName = &quot;bff.int-lt&quot;; // Default is Load test env
+        portNumber = &quot;3000&quot;
+        protocol = &quot;http&quot;
+}
+
+// Set the serviceName to a JMeter property for HTTP requests
+props.put(&quot;serviceName&quot;, serviceName)
+props.put(&quot;portNumber&quot;, portNumber);
+props.put(&quot;protocol&quot;, protocol);
+
+// Generate executionId as a UUID
+String executionId = &quot;lt_&quot; + UUID.randomUUID().toString()  // Format executionId with UUID
+props.put(&quot;executionId&quot;, executionId)  // Set executionId as JMeter property
+
+// Generate Start date
+// Get the current system time in the required format
+def currentDateTime = new SimpleDateFormat(&quot;yyyy-MM-dd&apos;T&apos;HH:mm:ss.SSSZ&quot;).format(Calendar.getInstance().getTime())
+
+// Set the current date and time as a JMeter property
+props.put(&quot;startDateTime&quot;, currentDateTime)
+
+// Print the current date and time (for debugging purposes)
+println(&quot;Current startDateTime: &quot; + currentDateTime)
+
+
+
+// Reports Out dir and files
+// Use CircleCI&apos;s current working directory to set aggregate report path
+String circleCiWorkingDir = System.getenv(&quot;CIRCLE_WORKING_DIRECTORY&quot;) ?: System.getProperty(&quot;user.dir&quot;)  // Fallback to user.dir if not set
+String jmeterResultsDir = vars.get(&quot;jmeterResultsDir&quot;)
+
+// Set the aggregate report path as a JMeter property
+String aggregateReportPath = &quot;${circleCiWorkingDir}/${jmeterResultsDir}/aggregate reports&quot;
+props.put(&quot;aggregateReportPath&quot;, aggregateReportPath)
+
+// Check if the directory exists, if not, create it
+File reportDir = new File(aggregateReportPath)
+if (!reportDir.exists()) {
+    boolean created = reportDir.mkdirs()  // Create the directory if it doesn&apos;t exist
+    if (created) {
+        println(&quot;Directory created: &quot; + aggregateReportPath)
+    } else {
+        println(&quot;Failed to create directory: &quot; + aggregateReportPath)
+    }
+}
+
+String aggregateReportFilePath = aggregateReportPath + &quot;/${executionId}_${threadCount}.csv&quot;
+println(&quot;Aggregate Report File path: &quot; + aggregateReportFilePath)  // Log the generated path for debugging
+props.put(&quot;aggregateReportFilePath&quot;, aggregateReportFilePath)
+
+// Set the aggregate report path as a JMeter property
+String resultsTreePath = &quot;${circleCiWorkingDir}/${jmeterResultsDir}/results tree&quot;
+props.put(&quot;resultsTreePath&quot;, resultsTreePath)
+
+// Check if the directory exists, if not, create it
+reportDir = new File(resultsTreePath)
+if (!reportDir.exists()) {
+    boolean created = reportDir.mkdirs()  // Create the directory if it doesn&apos;t exist
+    if (created) {
+        println(&quot;Directory created: &quot; + aggregateReportPath)
+    } else {
+        println(&quot;Failed to create directory: &quot; + aggregateReportPath)
+    }
+}
+
+String resultsTreeFilePath = resultsTreePath + &quot;/${executionId}_${threadCount}.csv&quot;
+println(&quot;results Tree File path: &quot; + resultsTreeFilePath)  // Log the generated path for debugging
+props.put(&quot;resultsTreeFilePath&quot;, resultsTreeFilePath)
+</stringProp>
+        </JSR223PreProcessor>
+        <hashTree/>
+        <DebugSampler guiclass="TestBeanGUI" testclass="DebugSampler" testname="Debug Sampler">
+          <boolProp name="displayJMeterProperties">true</boolProp>
+          <boolProp name="displayJMeterVariables">true</boolProp>
+          <boolProp name="displaySystemProperties">true</boolProp>
+        </DebugSampler>
+        <hashTree/>
+      </hashTree>
       <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Rental Flow via BFF Endpoints - Unlock/Lock Included">
         <stringProp name="TestPlan.comments">Purpose of the load test is to evaluate the Autoscaling only</stringProp>
-        <intProp name="ThreadGroup.num_threads">400</intProp>
+        <stringProp name="ThreadGroup.num_threads">${threadCount}</stringProp>
         <intProp name="ThreadGroup.ramp_time">1</intProp>
         <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
         <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
@@ -21,7 +185,7 @@
         </elementProp>
       </ThreadGroup>
       <hashTree>
-        <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="Load Testing Test Data - CSV">
+        <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="Load Testing Test Data - CSV" enabled="true">
           <stringProp name="delimiter">,</stringProp>
           <stringProp name="fileEncoding"></stringProp>
           <stringProp name="filename">/Users/sngpmac123/Jmeter Test Plan/Load Testing data.csv</stringProp>
@@ -33,10 +197,10 @@
           <stringProp name="variableNames">userName, sourceId, carCategory</stringProp>
         </CSVDataSet>
         <hashTree/>
-        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="BFF Login - http request" enabled="true">
-          <stringProp name="HTTPSampler.domain">${serviceName}</stringProp>
-          <stringProp name="HTTPSampler.port">${portNumber}</stringProp>
-          <stringProp name="HTTPSampler.protocol">${protocol}</stringProp>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="BFF Login" enabled="true">
+          <stringProp name="HTTPSampler.domain">${__P(serviceName)}</stringProp>
+          <stringProp name="HTTPSampler.port">${__P(portNumber)}</stringProp>
+          <stringProp name="HTTPSampler.protocol">${__P(protocol)}</stringProp>
           <stringProp name="HTTPSampler.path">/api/v1.5/auth/login</stringProp>
           <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
           <stringProp name="HTTPSampler.method">POST</stringProp>
@@ -62,37 +226,12 @@
           </elementProp>
         </HTTPSamplerProxy>
         <hashTree>
-          <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="User and Env Set Up" enabled="true">
+          <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="User Detail" enabled="true">
             <stringProp name="cacheKey">true</stringProp>
             <stringProp name="filename"></stringProp>
             <stringProp name="parameters"></stringProp>
             <stringProp name="script">// Fetch the current thread number (1-based index)
 int threadNumber = ctx.getThreadNum() + 1 // JMeter thread numbers are zero-based
-
-// Get environment from JMeter properties (set as User Defined Variable or via CLI)
-String environment = vars.get(&quot;environment&quot;) ?: &quot;&quot; // default to load test env if not provided
-String protocol = &quot;https&quot;
-String portNumber = &quot;&quot;
-
-// Define serviceName based on environment
-String serviceName;
-switch (environment) {
-    case &quot;uat&quot;:
-        serviceName = &quot;bff.black-sg.com&quot;;
-        break;
-    case &quot;prod&quot;:
-        serviceName = &quot;bff.blusg.com&quot;;
-        break;
-    default:
-        serviceName = &quot;bff.int-lt&quot;; // Default is Load test env
-        portNumber = &quot;3000&quot;
-        protocol = &quot;http&quot;
-}
-
-// Set service and port variables for HTTP request
-vars.put(&quot;serviceName&quot;, serviceName);
-vars.put(&quot;portNumber&quot;, portNumber);
-vars.put(&quot;protocol&quot;, protocol);
 
 // Static domain name
 String domain = &quot;bluesg.com.sg&quot;
@@ -112,6 +251,10 @@ vars.put(&quot;userEmail&quot;, userEmail)
 vars.put(&quot;userPassword&quot;, userPassword)
 vars.put(&quot;stationId&quot;, vars.get(&quot;sourceId&quot;))  // From CSV
 vars.put(&quot;carCategory&quot;, vars.get(&quot;carCategory&quot;))  // From CSV
+
+
+vars.put(&quot;aggregateReportFilePath&quot;, props.get(&quot;aggregateReportFilePath&quot;))
+vars.put(&quot;resultsTreeFilePath&quot;, props.get(&quot;resultsTreeFilePath&quot;))
 
 // Print carId to the JMeter log
 println(&quot;Thread csv test data &quot; + threadNumber + &quot; is: &quot; + userEmail + &quot; &quot; + vars.get(&quot;stationId&quot;) + &quot; &quot; + vars.get(&quot;carCategory&quot;));
@@ -142,14 +285,14 @@ println(&quot;Thread csv test data &quot; + threadNumber + &quot; is: &quot; + u
           <hashTree/>
           <GaussianRandomTimer guiclass="GaussianRandomTimerGui" testclass="GaussianRandomTimer" testname="Gaussian Random Timer" enabled="true">
             <stringProp name="ConstantTimer.delay">40000</stringProp>
-            <stringProp name="RandomTimer.range">120000</stringProp>
+            <stringProp name="RandomTimer.range">125000</stringProp>
           </GaussianRandomTimer>
           <hashTree/>
         </hashTree>
-        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="BFF Reservation - http request" enabled="true">
-          <stringProp name="HTTPSampler.domain">${serviceName}</stringProp>
-          <stringProp name="HTTPSampler.port">${portNumber}</stringProp>
-          <stringProp name="HTTPSampler.protocol">${protocol}</stringProp>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="BFF Reservation" enabled="true">
+          <stringProp name="HTTPSampler.domain">${__P(serviceName)}</stringProp>
+          <stringProp name="HTTPSampler.port">${__P(portNumber)}</stringProp>
+          <stringProp name="HTTPSampler.protocol">${__P(protocol)}</stringProp>
           <stringProp name="HTTPSampler.path">/api/v2/station/${stationId}/reserve-car</stringProp>
           <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
           <stringProp name="HTTPSampler.method">POST</stringProp>
@@ -212,15 +355,15 @@ log.info(&quot;Authorization Header: &quot; + authorizationHeader)</stringProp>
           </JSONPostProcessor>
           <hashTree/>
           <GaussianRandomTimer guiclass="GaussianRandomTimerGui" testclass="GaussianRandomTimer" testname="Gaussian Random Timer" enabled="true">
-            <stringProp name="ConstantTimer.delay">50000</stringProp>
-            <stringProp name="RandomTimer.range">200000</stringProp>
+            <stringProp name="ConstantTimer.delay">30000</stringProp>
+            <stringProp name="RandomTimer.range">250000</stringProp>
           </GaussianRandomTimer>
           <hashTree/>
         </hashTree>
-        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="BFF Start Rental - http request" enabled="true">
-          <stringProp name="HTTPSampler.domain">${serviceName}</stringProp>
-          <stringProp name="HTTPSampler.port">${portNumber}</stringProp>
-          <stringProp name="HTTPSampler.protocol">${protocol}</stringProp>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="BFF Start Rental" enabled="true">
+          <stringProp name="HTTPSampler.domain">${__P(serviceName)}</stringProp>
+          <stringProp name="HTTPSampler.port">${__P(portNumber)}</stringProp>
+          <stringProp name="HTTPSampler.protocol">${__P(protocol)}</stringProp>
           <stringProp name="HTTPSampler.path">/api/v2/journey/start</stringProp>
           <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
           <stringProp name="HTTPSampler.method">POST</stringProp>
@@ -264,19 +407,19 @@ log.info(&quot;Authorization Header: &quot; + authorizationHeader)</stringProp>
           </JSONPostProcessor>
           <hashTree/>
           <PoissonRandomTimer guiclass="PoissonRandomTimerGui" testclass="PoissonRandomTimer" testname="Poisson Random Timer" enabled="true">
-            <stringProp name="ConstantTimer.delay">10000</stringProp>
+            <stringProp name="ConstantTimer.delay">20000</stringProp>
             <stringProp name="RandomTimer.range">400000</stringProp>
           </PoissonRandomTimer>
           <hashTree/>
         </hashTree>
-        <LoopController guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller">
+        <LoopController guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
           <stringProp name="LoopController.loops">3</stringProp>
         </LoopController>
         <hashTree>
-          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="BFF Ongoing Rental - http request" enabled="true">
-            <stringProp name="HTTPSampler.domain">${serviceName}</stringProp>
-            <stringProp name="HTTPSampler.port">${portNumber}</stringProp>
-            <stringProp name="HTTPSampler.protocol">${protocol}</stringProp>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="BFF Ongoing Rental" enabled="true">
+            <stringProp name="HTTPSampler.domain">${__P(serviceName)}</stringProp>
+            <stringProp name="HTTPSampler.port">${__P(portNumber)}</stringProp>
+            <stringProp name="HTTPSampler.protocol">${__P(protocol)}</stringProp>
             <stringProp name="HTTPSampler.path">/api/v2/journey/ongoing</stringProp>
             <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
             <stringProp name="HTTPSampler.method">GET</stringProp>
@@ -305,16 +448,16 @@ log.info(&quot;Authorization Header: &quot; + authorizationHeader)</stringProp>
             </HeaderManager>
             <hashTree/>
             <GaussianRandomTimer guiclass="GaussianRandomTimerGui" testclass="GaussianRandomTimer" testname="Gaussian Random Timer" enabled="true">
-              <stringProp name="ConstantTimer.delay">2000</stringProp>
+              <stringProp name="ConstantTimer.delay">5000</stringProp>
               <stringProp name="RandomTimer.range">20000</stringProp>
             </GaussianRandomTimer>
             <hashTree/>
           </hashTree>
         </hashTree>
         <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="BFF Unlock Car - http request" enabled="false">
-          <stringProp name="HTTPSampler.domain">${serviceName}</stringProp>
-          <stringProp name="HTTPSampler.port">${portNumber}</stringProp>
-          <stringProp name="HTTPSampler.protocol">${protocol}</stringProp>
+          <stringProp name="HTTPSampler.domain">${__P(serviceName)}</stringProp>
+          <stringProp name="HTTPSampler.port">${__P(portNumber)}</stringProp>
+          <stringProp name="HTTPSampler.protocol">${__P(protocol)}</stringProp>
           <stringProp name="HTTPSampler.path">/api/v2/vehicles/${carId}/unlock</stringProp>
           <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
           <stringProp name="HTTPSampler.method">POST</stringProp>
@@ -349,9 +492,9 @@ log.info(&quot;Authorization Header: &quot; + authorizationHeader)</stringProp>
           <hashTree/>
         </hashTree>
         <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="BFF Lock Car - http request" enabled="false">
-          <stringProp name="HTTPSampler.domain">${serviceName}</stringProp>
-          <stringProp name="HTTPSampler.port">${portNumber}</stringProp>
-          <stringProp name="HTTPSampler.protocol">${protocol}</stringProp>
+          <stringProp name="HTTPSampler.domain">${__P(serviceName)}</stringProp>
+          <stringProp name="HTTPSampler.port">${__P(portNumber)}</stringProp>
+          <stringProp name="HTTPSampler.protocol">${__P(protocol)}</stringProp>
           <stringProp name="HTTPSampler.path">/api/v2/vehicles/${carId}/lock</stringProp>
           <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
           <stringProp name="HTTPSampler.method">POST</stringProp>
@@ -385,10 +528,10 @@ log.info(&quot;Authorization Header: &quot; + authorizationHeader)</stringProp>
           </GaussianRandomTimer>
           <hashTree/>
         </hashTree>
-        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="BFF End rental - http request" enabled="true">
-          <stringProp name="HTTPSampler.domain">${serviceName}</stringProp>
-          <stringProp name="HTTPSampler.port">${portNumber}</stringProp>
-          <stringProp name="HTTPSampler.protocol">${protocol}</stringProp>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="BFF End rental" enabled="true">
+          <stringProp name="HTTPSampler.domain">${__P(serviceName)}</stringProp>
+          <stringProp name="HTTPSampler.port">${__P(portNumber)}</stringProp>
+          <stringProp name="HTTPSampler.protocol">${__P(protocol)}</stringProp>
           <stringProp name="HTTPSampler.path">/api/v2/journey/end</stringProp>
           <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
           <stringProp name="HTTPSampler.method">POST</stringProp>
@@ -424,11 +567,6 @@ log.info(&quot;Authorization Header: &quot; + authorizationHeader)</stringProp>
             </collectionProp>
           </HeaderManager>
           <hashTree/>
-          <GaussianRandomTimer guiclass="GaussianRandomTimerGui" testclass="GaussianRandomTimer" testname="Gaussian Random Timer" enabled="true">
-            <stringProp name="ConstantTimer.delay">10000</stringProp>
-            <stringProp name="RandomTimer.range">400000</stringProp>
-          </GaussianRandomTimer>
-          <hashTree/>
           <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="JSR223 PreProcessor" enabled="true">
             <stringProp name="scriptLanguage">groovy</stringProp>
             <stringProp name="parameters"></stringProp>
@@ -436,6 +574,11 @@ log.info(&quot;Authorization Header: &quot; + authorizationHeader)</stringProp>
             <stringProp name="cacheKey">true</stringProp>
             <stringProp name="script">println(&quot;End Rental : &quot; + vars.get(&quot;userName&quot;) + &quot; &quot; + vars.get(&quot;reservationId&quot;));</stringProp>
           </JSR223PreProcessor>
+          <hashTree/>
+          <GaussianRandomTimer guiclass="GaussianRandomTimerGui" testclass="GaussianRandomTimer" testname="Gaussian Random Timer" enabled="true">
+            <stringProp name="ConstantTimer.delay">10000</stringProp>
+            <stringProp name="RandomTimer.range">40000</stringProp>
+          </GaussianRandomTimer>
           <hashTree/>
         </hashTree>
         <DebugSampler guiclass="TestBeanGUI" testclass="DebugSampler" testname="Debug Sampler" enabled="false">
@@ -445,7 +588,7 @@ log.info(&quot;Authorization Header: &quot; + authorizationHeader)</stringProp>
         </DebugSampler>
         <hashTree/>
         <ResultCollector guiclass="ViewResultsFullVisualizer" testclass="ResultCollector" testname="View Results Tree">
-          <boolProp name="ResultCollector.error_logging">false</boolProp>
+          <boolProp name="ResultCollector.error_logging">true</boolProp>
           <objProp>
             <name>saveConfig</name>
             <value class="SampleSaveConfiguration">
@@ -478,7 +621,7 @@ log.info(&quot;Authorization Header: &quot; + authorizationHeader)</stringProp>
               <connectTime>true</connectTime>
             </value>
           </objProp>
-          <stringProp name="filename">/Users/sngpmac123/jmeter-tests/Results tree.csv</stringProp>
+          <stringProp name="filename">${resultsTreeFilePath}</stringProp>
         </ResultCollector>
         <hashTree/>
         <ResultCollector guiclass="StatVisualizer" testclass="ResultCollector" testname="Aggregate Report">
@@ -515,10 +658,10 @@ log.info(&quot;Authorization Header: &quot; + authorizationHeader)</stringProp>
               <connectTime>true</connectTime>
             </value>
           </objProp>
-          <stringProp name="filename">/Users/sngpmac123/jmeter-tests/Aggregate Report.csv</stringProp>
+          <stringProp name="filename">/Users/sngpmac123/jmeter-tests/Aggregate Report 01.csv</stringProp>
         </ResultCollector>
         <hashTree/>
-        <ResultCollector guiclass="SummaryReport" testclass="ResultCollector" testname="Summary Report" enabled="true">
+        <ResultCollector guiclass="SummaryReport" testclass="ResultCollector" testname="Summary Report">
           <boolProp name="ResultCollector.error_logging">false</boolProp>
           <objProp>
             <name>saveConfig</name>
@@ -629,16 +772,65 @@ log.info(&quot;Authorization Header: &quot; + authorizationHeader)</stringProp>
           <stringProp name="filename"></stringProp>
         </ResultCollector>
         <hashTree/>
-        <Arguments guiclass="ArgumentsPanel" testclass="Arguments" testname="Environment Variables">
-          <collectionProp name="Arguments.arguments">
-            <elementProp name="environment" elementType="Argument">
-              <stringProp name="Argument.name">environment</stringProp>
-              <stringProp name="Argument.value"></stringProp>
-              <stringProp name="Argument.metadata">=</stringProp>
-            </elementProp>
-          </collectionProp>
-        </Arguments>
-        <hashTree/>
+      </hashTree>
+      <PostThreadGroup guiclass="PostThreadGroupGui" testclass="PostThreadGroup" testname="tearDown Thread Group">
+        <intProp name="ThreadGroup.num_threads">1</intProp>
+        <intProp name="ThreadGroup.ramp_time">1</intProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller">
+          <stringProp name="LoopController.loops">1</stringProp>
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+        </elementProp>
+      </PostThreadGroup>
+      <hashTree>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Mockserver Report Metrics">
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables">
+            <collectionProp name="Arguments.arguments"/>
+          </elementProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Collect Metrics" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="script">import org.apache.jmeter.reporters.ResultCollector
+import org.apache.jmeter.save.SaveService
+import org.apache.jmeter.util.JMeterUtils
+import org.apache.jmeter.services.JMeterContextService
+import java.nio.file.Paths
+
+// Define file paths
+String resultsTreePath = props.get(&quot;resultsTreeFilePath&quot;) ?: &quot;./rawResults.jtl&quot; // Default if not provided
+String aggregateReportFilePath = props.get(&quot;aggregateReportFilePath&quot;) ?: &quot;./aggregateReport.csv&quot;  // Default to current dir if not provided
+
+
+// Initialize JMeter utilities (ensure paths are set if running standalone)
+JMeterUtils.setProperty(&quot;jmeter.save.saveservice.output_format&quot;, &quot;csv&quot;) // Ensure raw data is saved in CSV format
+
+// Create and configure the ResultCollector for the aggregate report
+ResultCollector collector = new ResultCollector()
+collector.setFilename(aggregateReportFilePath)
+
+// Set the result collector as a listener (this will handle the results in JMeter)
+JMeterContextService.getContext().getVariables().put(&quot;ResultCollector&quot;, collector)
+
+// Log file paths
+println(&quot;Raw data saved to: &quot; + resultsTreePath)
+println(&quot;Aggregate report saved to: &quot; + aggregateReportFilePath)
+
+// Add the ResultCollector to the JMeter test plan for result collection
+// Typically, ResultCollector would be added to the Test Plan in JMeter&apos;s GUI but if doing it programmatically, this is how to add it
+SaveService.saveTestElement(collector, Paths.get(aggregateReportFilePath).toFile())
+</stringProp>
+          </JSR223PreProcessor>
+          <hashTree/>
+        </hashTree>
       </hashTree>
       <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Create Users" enabled="false">
         <stringProp name="TestPlan.comments">Purpose of the load test is to evaluate the Autoscaling only</stringProp>
@@ -1018,7 +1210,7 @@ println(&quot;Thread csv test data &quot; + threadNumber + &quot; is: &quot; + u
         </Arguments>
         <hashTree/>
       </hashTree>
-      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Archived" enabled="false">
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Archived - Do not Enable" enabled="false">
         <intProp name="ThreadGroup.num_threads">1</intProp>
         <intProp name="ThreadGroup.ramp_time">1</intProp>
         <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
